@@ -385,8 +385,33 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadSites();
             
-            // 30秒ごとにサイト一覧を更新
-            setInterval(loadSites, 30000);
+            // インテリジェントな更新間隔（エラー時は間隔を延長）
+            let updateInterval = 30000; // 初期値30秒
+            let consecutiveErrors = 0;
+            
+            const updateSites = async () => {
+                try {
+                    await loadSites();
+                    consecutiveErrors = 0;
+                    updateInterval = 30000; // 成功時は30秒に戻す
+                } catch (error) {
+                    consecutiveErrors++;
+                    updateInterval = Math.min(30000 * Math.pow(2, consecutiveErrors), 300000); // 最大5分
+                    console.warn(`API エラー (${consecutiveErrors}回目) - 次回更新まで ${updateInterval/1000}秒待機`);
+                }
+                
+                setTimeout(updateSites, updateInterval);
+            };
+            
+            // 初回は30秒後に開始
+            setTimeout(updateSites, updateInterval);
+            
+            // ページがフォーカスされた時に即座に更新
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    loadSites();
+                }
+            });
         });
     </script>
 </body>
