@@ -1,0 +1,21 @@
+# 環境設定（機密情報）
+.env
+
+# ログファイル
+*.log
+watcher.log
+
+# Python関連
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 設定ファイル（個人設定含む）
+config.json
+
+# システムファイル
+.DS_Store
+Thumbs.db
