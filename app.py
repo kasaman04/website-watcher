@@ -12,9 +12,9 @@ from typing import List, Dict, Optional, Set
 from logging.handlers import RotatingFileHandler
 import httpx
 import aiosmtplib
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -54,6 +54,10 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Website Watcher", description="高信頼性サイト更新監視システム")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# 簡単な認証設定
+AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "1033")
+logged_in_ips = set()  # IPベースの簡単なセッション管理
 
 
 # CORS設定
@@ -235,6 +239,24 @@ class AsyncSiteChecker:
 # サービスインスタンス
 email_service = AsyncEmailService()
 site_checker = None  # 後で初期化
+
+# 簡単な認証関数
+def get_client_ip(request: Request) -> str:
+    """クライアントIPアドレス取得"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host
+
+def is_authenticated(request: Request) -> bool:
+    """認証チェック"""
+    client_ip = get_client_ip(request)
+    return client_ip in logged_in_ips
+
+def require_auth(request: Request):
+    """認証必須チェック"""
+    if not is_authenticated(request):
+        raise HTTPException(status_code=401, detail="認証が必要です")
 
 
 def get_cached_data(key: str, ttl_seconds: int = 30):
@@ -480,9 +502,34 @@ async def shutdown_event():
     logger.info("👋 Website Watcher 終了")
 
 
+# 認証ルート
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """ログインページ"""
+    return FileResponse(os.path.join(static_dir, "login.html"))
+
+@app.post("/login")
+async def login(request: Request, password: str = Form(...)):
+    """ログイン処理"""
+    if password == AUTH_PASSWORD:
+        client_ip = get_client_ip(request)
+        logged_in_ips.add(client_ip)
+        return RedirectResponse(url="/", status_code=303)
+    else:
+        return RedirectResponse(url="/login?error=1", status_code=303)
+
+@app.get("/logout")
+async def logout(request: Request):
+    """ログアウト"""
+    client_ip = get_client_ip(request)
+    logged_in_ips.discard(client_ip)
+    return RedirectResponse(url="/login", status_code=303)
+
 @app.get("/", response_class=HTMLResponse)
-async def root():
-    """メインページ"""
+async def root(request: Request):
+    """メインページ（認証必須）"""
+    if not is_authenticated(request):
+        return RedirectResponse(url="/login", status_code=303)
     return FileResponse(os.path.join(static_dir, "index.html"))
 
 @app.get("/api/health")
@@ -514,6 +561,7 @@ async def get_metrics(request: Request):
 @limiter.limit("120/minute")
 async def get_sites(request: Request):
     """サイト一覧取得（キャッシュ付き）"""
+    require_auth(request)
     sites = load_sites()
     return {"sites": sites}
 
@@ -521,6 +569,7 @@ async def get_sites(request: Request):
 @limiter.limit("10/minute")
 async def add_site(site: Site, request: Request):
     """サイト追加"""
+    require_auth(request)
     sites = load_sites()
     
     # 重複チェック
@@ -551,6 +600,7 @@ async def add_site(site: Site, request: Request):
 @limiter.limit("10/minute")
 async def delete_site(site_index: int, request: Request):
     """サイト削除"""
+    require_auth(request)
     sites = load_sites()
     
     if 0 <= site_index < len(sites):
@@ -588,6 +638,7 @@ async def test_email(email_data: dict, request: Request):
 @limiter.limit("3/minute")
 async def check_now(request: Request):
     """手動チェック実行"""
+    require_auth(request)
     logger.info("🔍 手動チェック実行")
     await check_all_sites()
     return {"message": "チェックを実行しました"}
