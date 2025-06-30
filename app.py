@@ -244,20 +244,31 @@ site_checker = None  # 後で初期化
 
 # 簡単な認証関数
 def get_client_ip(request: Request) -> str:
-    """クライアントIPアドレス取得"""
+    """クライアントIPアドレス取得（Render対応）"""
+    # RenderのProxyヘッダーを優先
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host
+        ip = forwarded.split(",")[0].strip()
+        logger.info(f"🌐 Client IP (X-Forwarded-For): {ip}")
+        return ip
+    
+    # CF-Connecting-IP (Cloudflare)
+    cf_ip = request.headers.get("CF-Connecting-IP")
+    if cf_ip:
+        logger.info(f"🌐 Client IP (CF): {cf_ip}")
+        return cf_ip
+    
+    # 直接接続
+    direct_ip = request.client.host if request.client else "unknown"
+    logger.info(f"🌐 Client IP (direct): {direct_ip}")
+    return direct_ip
 
 def is_authenticated(request: Request) -> bool:
     """認証チェック"""
-    # 開発・テスト環境では認証スキップ
-    if os.getenv("SKIP_AUTH") == "true":
-        return True
-    
     client_ip = get_client_ip(request)
-    return client_ip in logged_in_ips
+    is_logged_in = client_ip in logged_in_ips
+    logger.info(f"🔐 認証チェック - IP: {client_ip}, ログイン状態: {is_logged_in}, セッション数: {len(logged_in_ips)}")
+    return is_logged_in
 
 def require_auth(request: Request):
     """認証必須チェック"""
@@ -457,7 +468,13 @@ async def task_monitor():
 # 静的ファイル配信
 app_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(app_dir, "static")
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# 静的ディレクトリの存在確認
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logger.info(f"📁 静的ファイルディレクトリ: {static_dir}")
+else:
+    logger.error(f"❌ 静的ファイルディレクトリが見つかりません: {static_dir}")
 
 # FastAPI エンドポイント
 @app.on_event("startup")
@@ -466,6 +483,23 @@ async def startup_event():
     global monitoring_task, httpx_client, site_checker
     
     logger.info("🚀 Website Watcher 起動")
+    
+    # 静的ファイルの存在確認
+    login_file = os.path.join(static_dir, "login.html")
+    index_file = os.path.join(static_dir, "index.html")
+    favicon_file = os.path.join(static_dir, "favicon.png")
+    
+    files_to_check = [
+        ("login.html", login_file),
+        ("index.html", index_file),
+        ("favicon.png", favicon_file)
+    ]
+    
+    for name, filepath in files_to_check:
+        if os.path.exists(filepath):
+            logger.info(f"✅ {name}: 存在確認")
+        else:
+            logger.warning(f"⚠️ {name}: ファイルが見つかりません - {filepath}")
     
     # HTTPクライアント初期化
     httpx_client = httpx.AsyncClient(
@@ -485,6 +519,10 @@ async def startup_event():
         logger.info("✅ メール設定確認完了")
     else:
         logger.warning("⚠️ メール設定に問題があります")
+    
+    # 認証情報確認
+    logger.info(f"🔑 認証設定: パスワード={'*' * len(AUTH_PASSWORD)}")
+    logger.info(f"📊 現在のセッション数: {len(logged_in_ips)}")
     
     # 監視タスク開始
     monitoring_task = asyncio.create_task(monitoring_loop())
@@ -512,31 +550,82 @@ async def shutdown_event():
 @app.get("/login", response_class=HTMLResponse)
 async def login_page():
     """ログインページ"""
-    return FileResponse(os.path.join(static_dir, "login.html"))
+    login_file = os.path.join(static_dir, "login.html")
+    logger.info(f"📄 ログインページ要求 - ファイル: {login_file}")
+    
+    if not os.path.exists(login_file):
+        logger.error(f"❌ ログインファイルが見つかりません: {login_file}")
+        raise HTTPException(status_code=404, detail="Login page not found")
+    
+    return FileResponse(login_file)
 
 @app.post("/login")
 async def login(request: Request, password: str = Form(...)):
     """ログイン処理"""
+    client_ip = get_client_ip(request)
+    logger.info(f"🔑 ログイン試行 - IP: {client_ip}, パスワード: {'*' * len(password)}")
+    
     if password == AUTH_PASSWORD:
-        client_ip = get_client_ip(request)
         logged_in_ips.add(client_ip)
+        logger.info(f"✅ ログイン成功 - IP: {client_ip}, セッション数: {len(logged_in_ips)}")
         return RedirectResponse(url="/", status_code=303)
     else:
+        logger.warning(f"❌ ログイン失敗 - IP: {client_ip}, 無効なパスワード")
         return RedirectResponse(url="/login?error=1", status_code=303)
 
 @app.get("/logout")
 async def logout(request: Request):
     """ログアウト"""
     client_ip = get_client_ip(request)
+    was_logged_in = client_ip in logged_in_ips
     logged_in_ips.discard(client_ip)
+    logger.info(f"😪 ログアウト - IP: {client_ip}, ログイン状態: {was_logged_in}, セッション数: {len(logged_in_ips)}")
     return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """メインページ（認証必須）"""
+    client_ip = get_client_ip(request)
+    logger.info(f"🏠 メインページ要求 - IP: {client_ip}")
+    
     if not is_authenticated(request):
+        logger.info(f"🔒 未認証アクセス - ログインページにリダイレクト")
         return RedirectResponse(url="/login", status_code=303)
-    return FileResponse(os.path.join(static_dir, "index.html"))
+    
+    index_file = os.path.join(static_dir, "index.html")
+    if not os.path.exists(index_file):
+        logger.error(f"❌ インデックスファイルが見つかりません: {index_file}")
+        raise HTTPException(status_code=404, detail="Index page not found")
+    
+    return FileResponse(index_file)
+
+# ファビコン配信
+@app.get("/favicon.ico")
+@app.get("/favicon.png")
+async def favicon():
+    """ファビコン配信"""
+    favicon_file = os.path.join(static_dir, "favicon.png")
+    if os.path.exists(favicon_file):
+        return FileResponse(favicon_file, media_type="image/png")
+    else:
+        logger.warning("⚠️ ファビコンファイルが見つかりません")
+        raise HTTPException(status_code=404, detail="Favicon not found")
+
+# デバッグ用エンドポイント
+@app.get("/debug/auth")
+async def debug_auth(request: Request):
+    """認証状態デバッグ情報"""
+    client_ip = get_client_ip(request)
+    is_auth = is_authenticated(request)
+    
+    return {
+        "client_ip": client_ip,
+        "is_authenticated": is_auth,
+        "logged_in_ips": list(logged_in_ips),
+        "session_count": len(logged_in_ips),
+        "auth_password_set": bool(AUTH_PASSWORD),
+        "headers": dict(request.headers)
+    }
 
 @app.get("/api/health")
 @limiter.limit("60/minute")
@@ -648,6 +737,24 @@ async def check_now(request: Request):
     logger.info("🔍 手動チェック実行")
     await check_all_sites()
     return {"message": "チェックを実行しました"}
+
+# 緊急ログイン用（テスト環境のみ）
+@app.post("/emergency-login")
+async def emergency_login(request: Request):
+    """緊急ログイン（デバッグ用）"""
+    # 本番環境では無効
+    if os.getenv("ENVIRONMENT") == "production":
+        raise HTTPException(status_code=404, detail="Not found")
+    
+    client_ip = get_client_ip(request)
+    logged_in_ips.add(client_ip)
+    logger.info(f"🆘 緊急ログイン - IP: {client_ip}")
+    
+    return {
+        "message": "緊急ログイン成功",
+        "client_ip": client_ip,
+        "session_count": len(logged_in_ips)
+    }
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8888"))
