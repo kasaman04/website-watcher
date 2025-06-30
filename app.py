@@ -12,11 +12,9 @@ from typing import List, Dict, Optional, Set
 from logging.handlers import RotatingFileHandler
 import httpx
 import aiosmtplib
-from fastapi import FastAPI, HTTPException, Request, Depends, Form
-from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, HTTPException, Request, Form
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -57,7 +55,6 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # セキュリティ設定
-security = HTTPBasic()
 ADMIN_PASSWORD = "1033"
 
 # セッション管理（簡易版）
@@ -244,15 +241,6 @@ email_service = AsyncEmailService()
 site_checker = None  # 後で初期化
 
 # 認証関数
-def verify_password(credentials: HTTPBasicCredentials = Depends(security)):
-    """パスワード認証"""
-    if credentials.password != ADMIN_PASSWORD:
-        raise HTTPException(
-            status_code=401,
-            detail="パスワードが間違っています",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return credentials.username
 
 def create_session_token():
     """セッショントークン生成"""
@@ -264,9 +252,7 @@ def create_session_token():
 def verify_session(request: Request):
     """セッション確認"""
     session_token = request.cookies.get("session_token")
-    logger.info(f"セッション確認: token={session_token}, active_sessions={len(active_sessions)}")
     if not session_token or session_token not in active_sessions:
-        logger.warning("認証失敗: 無効なセッショントークン")
         raise HTTPException(status_code=401, detail="認証が必要です")
 
 def get_cached_data(key: str, ttl_seconds: int = 30):
