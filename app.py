@@ -57,7 +57,44 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # 簡単な認証設定
 AUTH_PASSWORD = os.getenv("AUTH_PASSWORD", "1033")
-logged_in_ips = set()  # IPベースの簡単なセッション管理
+
+# 永続的なセッション管理
+def get_session_file():
+    """セッションファイルパス取得"""
+    session_path = '/opt/render/project/data/sessions.json'
+    if not os.path.exists(os.path.dirname(session_path)):
+        return 'sessions.json'
+    return session_path
+
+def load_sessions():
+    """セッション読み込み"""
+    try:
+        session_file = get_session_file()
+        if os.path.exists(session_file):
+            with open(session_file, 'r') as f:
+                data = json.load(f)
+                # 古いセッション削除（24時間経過）
+                current_time = time.time()
+                valid_sessions = {ip: timestamp for ip, timestamp in data.items() 
+                                if current_time - timestamp < 86400}
+                if len(valid_sessions) != len(data):
+                    save_sessions(valid_sessions)
+                return set(valid_sessions.keys())
+    except Exception as e:
+        logger.error(f"セッション読み込みエラー: {e}")
+    return set()
+
+def save_sessions(sessions_dict):
+    """セッション保存"""
+    try:
+        session_file = get_session_file()
+        os.makedirs(os.path.dirname(session_file), exist_ok=True)
+        with open(session_file, 'w') as f:
+            json.dump(sessions_dict, f)
+    except Exception as e:
+        logger.error(f"セッション保存エラー: {e}")
+
+logged_in_ips = load_sessions()  # 起動時にセッション復元
 
 
 # CORS設定
@@ -251,7 +288,9 @@ def get_client_ip(request: Request) -> str:
 def is_authenticated(request: Request) -> bool:
     """認証チェック"""
     client_ip = get_client_ip(request)
-    return client_ip in logged_in_ips
+    # 動的にセッション更新
+    current_sessions = load_sessions()
+    return client_ip in current_sessions
 
 def require_auth(request: Request):
     """認証必須チェック"""
@@ -513,7 +552,11 @@ async def login(request: Request, password: str = Form(...)):
     """ログイン処理"""
     if password == AUTH_PASSWORD:
         client_ip = get_client_ip(request)
-        logged_in_ips.add(client_ip)
+        # 永続的なセッション追加
+        current_sessions = load_sessions()
+        sessions_dict = {ip: time.time() for ip in current_sessions}
+        sessions_dict[client_ip] = time.time()
+        save_sessions(sessions_dict)
         return RedirectResponse(url="/", status_code=303)
     else:
         return RedirectResponse(url="/login?error=1", status_code=303)
@@ -522,7 +565,10 @@ async def login(request: Request, password: str = Form(...)):
 async def logout(request: Request):
     """ログアウト"""
     client_ip = get_client_ip(request)
-    logged_in_ips.discard(client_ip)
+    # 永続的なセッション削除
+    current_sessions = load_sessions()
+    sessions_dict = {ip: time.time() for ip in current_sessions if ip != client_ip}
+    save_sessions(sessions_dict)
     return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/", response_class=HTMLResponse)
