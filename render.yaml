@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: website-watcher
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
+    envVars:
+      - key: PORT
+        value: 8888
+      - key: CHECK_INTERVAL
+        value: 300
+    disk:
+      name: website-watcher-disk
+      mountPath: /opt/render/project/data
+      sizeGB: 1

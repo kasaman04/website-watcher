@@ -1,11 +1,13 @@
-# 環境設定（機密情報）
-.env
-
 # ログファイル
 *.log
 watcher.log
+server.log
 
-# Python関連
+# 設定ファイル（機密情報を含む可能性）
+config.json
+.env
+
+# Pythonキャッシュ
 __pycache__/
 *.pyc
 *.pyo
@@ -13,9 +15,30 @@ __pycache__/
 .Python
 *.so
 
-# 設定ファイル（個人設定含む）
-config.json
+# 仮想環境
+venv/
+ENV/
+env/
+.venv
 
-# システムファイル
+# IDEファイル
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS生成ファイル
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# テンポラリファイル
+*.tmp
+*.temp
+*.bak
+
+# ローカル画像ファイル（必要に応じて）
+*.png
+*.jpg
+*.jpeg

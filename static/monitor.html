@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Website Watcher - 高度監視ダッシュボード</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f0f2f5;
+            color: #1a1a1a;
+            line-height: 1.6;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+        
+        /* サイドバー */
+        .sidebar {
+            background: #2c3e50;
+            color: white;
+            padding: 30px 20px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 40px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav-item {
+            display: block;
+            padding: 12px 16px;
+            margin: 5px 0;
+            border-radius: 8px;
+            color: #ecf0f1;
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .nav-item:hover, .nav-item.active {
+            background: #34495e;
+            transform: translateX(5px);
+        }
+        
+        /* メインコンテンツ */
+        .main-content {
+            padding: 30px;
+            overflow-y: auto;
+        }
+        
+        .page-header {
+            margin-bottom: 30px;
+        }
+        
+        .page-title {
+            font-size: 32px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        
+        .page-subtitle {
+            color: #7f8c8d;
+            font-size: 16px;
+        }
+        
+        /* ステータスカード */
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .status-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .status-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        
+        .status-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+        
+        .status-icon.green {
+            background: #d4f4dd;
+            color: #27ae60;
+        }
+        
+        .status-icon.blue {
+            background: #d6e9ff;
+            color: #3498db;
+        }
+        
+        .status-icon.purple {
+            background: #e8dff5;
+            color: #9b59b6;
+        }
+        
+        .status-icon.orange {
+            background: #ffe9d6;
+            color: #e67e22;
+        }
+        
+        .status-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        
+        .status-label {
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        /* サイトリスト */
+        .sites-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 30px;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .site-grid {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .site-card {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 15px;
+            transition: all 0.3s;
+        }
+        
+        .site-card:hover {
+            border-color: #3498db;
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.1);
+        }
+        
+        .site-info h3 {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 8px;
+        }
+        
+        .site-url {
+            color: #3498db;
+            text-decoration: none;
+            font-size: 14px;
+            word-break: break-all;
+        }
+        
+        .site-url:hover {
+            text-decoration: underline;
+        }
+        
+        .site-meta {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #7f8c8d;
+        }
+        
+        .meta-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .site-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        /* ボタン */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+        
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #229954;
+        }
+        
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+        
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #7f8c8d;
+        }
+        
+        /* フォーム */
+        .form-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #2c3e50;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #e1e5e9;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+        
+        /* アラート */
+        .alert {
+            padding: 16px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .alert-success {
+            background: #d4f4dd;
+            color: #27ae60;
+            border: 1px solid #a9dfbf;
+        }
+        
+        .alert-error {
+            background: #ffeaa7;
+            color: #e17055;
+            border: 1px solid #fdcb6e;
+        }
+        
+        .alert-info {
+            background: #d6e9ff;
+            color: #3498db;
+            border: 1px solid #aed6f1;
+        }
+        
+        /* メトリクスセクション */
+        .metrics-container {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f2f5;
+        }
+        
+        .metric-row:last-child {
+            border-bottom: none;
+        }
+        
+        .metric-label {
+            color: #7f8c8d;
+        }
+        
+        .metric-value {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        /* レスポンシブ */
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                position: static;
+                height: auto;
+                padding: 20px;
+            }
+            
+            .status-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* ローディング */
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* モーダル */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            animation: fadeIn 0.3s;
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            animation: slideIn 0.3s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- サイドバー -->
+        <aside class="sidebar">
+            <div class="logo">
+                <span>🔍</span>
+                <span>Website Watcher</span>
+            </div>
+            
+            <nav>
+                <a class="nav-item active" onclick="showSection('overview')">
+                    <span>📊 概要</span>
+                </a>
+                <a class="nav-item" onclick="showSection('sites')">
+                    <span>🌐 サイト管理</span>
+                </a>
+                <a class="nav-item" onclick="showSection('add-site')">
+                    <span>➕ サイト追加</span>
+                </a>
+                <a class="nav-item" onclick="showSection('metrics')">
+                    <span>📈 メトリクス</span>
+                </a>
+                <a class="nav-item" onclick="showSection('settings')">
+                    <span>⚙️ 設定</span>
+                </a>
+            </nav>
+        </aside>
+        
+        <!-- メインコンテンツ -->
+        <main class="main-content">
+            <!-- 概要セクション -->
+            <section id="overview-section" class="content-section">
+                <div class="page-header">
+                    <h1 class="page-title">監視ダッシュボード</h1>
+                    <p class="page-subtitle">システムの現在の状態とパフォーマンスメトリクス</p>
+                </div>
+                
+                <div id="alertContainer"></div>
+                
+                <!-- ステータスカード -->
+                <div class="status-cards">
+                    <div class="status-card">
+                        <div class="status-icon green">
+                            <span>✓</span>
+                        </div>
+                        <div class="status-value" id="systemStatus">稼働中</div>
+                        <div class="status-label">システムステータス</div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-icon blue">
+                            <span>🌐</span>
+                        </div>
+                        <div class="status-value" id="totalSitesCard">0</div>
+                        <div class="status-label">監視中のサイト</div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-icon purple">
+                            <span>📊</span>
+                        </div>
+                        <div class="status-value" id="totalChecks">0</div>
+                        <div class="status-label">総チェック回数</div>
+                    </div>
+                    
+                    <div class="status-card">
+                        <div class="status-icon orange">
+                            <span>⏰</span>
+                        </div>
+                        <div class="status-value" id="uptime">0</div>
+                        <div class="status-label">稼働時間</div>
+                    </div>
+                </div>
+                
+                <!-- 最近の活動 -->
+                <div class="sites-container">
+                    <div class="section-header">
+                        <h2 class="section-title">最近の監視活動</h2>
+                        <button class="btn btn-primary" onclick="refreshData()">
+                            更新
+                        </button>
+                    </div>
+                    <div id="recentActivity">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- サイト管理セクション -->
+            <section id="sites-section" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <h1 class="page-title">サイト管理</h1>
+                    <p class="page-subtitle">監視対象サイトの一覧と管理</p>
+                </div>
+                
+                <div class="sites-container">
+                    <div class="section-header">
+                        <h2 class="section-title">監視中のサイト</h2>
+                        <div>
+                            <button class="btn btn-success" onclick="checkAllSites()">
+                                全サイトチェック
+                            </button>
+                            <button class="btn btn-primary" onclick="showSection('add-site')">
+                                新規追加
+                            </button>
+                        </div>
+                    </div>
+                    <div id="sitesList" class="site-grid">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- サイト追加セクション -->
+            <section id="add-site-section" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <h1 class="page-title">新規サイト追加</h1>
+                    <p class="page-subtitle">監視対象サイトを追加します</p>
+                </div>
+                
+                <div class="form-container">
+                    <form id="addSiteForm">
+                        <div class="form-group">
+                            <label class="form-label" for="siteName">サイト名（オプション）</label>
+                            <input type="text" id="siteName" class="form-input" placeholder="例: ニュースサイト">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="siteUrl">監視するURL</label>
+                            <input type="url" id="siteUrl" class="form-input" placeholder="https://example.com" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label class="form-label" for="notifyEmail">通知先メールアドレス</label>
+                            <input type="email" id="notifyEmail" class="form-input" placeholder="your@email.com" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <button type="submit" class="btn btn-primary">サイトを追加</button>
+                            <button type="button" class="btn btn-secondary" onclick="testEmailConfig()">
+                                テストメール送信
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+            
+            <!-- メトリクスセクション -->
+            <section id="metrics-section" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <h1 class="page-title">システムメトリクス</h1>
+                    <p class="page-subtitle">詳細なパフォーマンスと統計情報</p>
+                </div>
+                
+                <div class="metrics-container">
+                    <div id="metricsContent">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 設定セクション -->
+            <section id="settings-section" class="content-section" style="display: none;">
+                <div class="page-header">
+                    <h1 class="page-title">システム設定</h1>
+                    <p class="page-subtitle">Website Watcherの設定と環境情報</p>
+                </div>
+                
+                <div class="form-container">
+                    <h3>環境設定</h3>
+                    <div class="metric-row">
+                        <span class="metric-label">チェック間隔</span>
+                        <span class="metric-value">5分</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">タイムアウト</span>
+                        <span class="metric-value">30秒</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">最大リトライ回数</span>
+                        <span class="metric-value">3回</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">サーキットブレーカー閾値</span>
+                        <span class="metric-value">5エラー</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <!-- モーダル -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 id="modalTitle">確認</h3>
+            <p id="modalMessage">本当に実行しますか？</p>
+            <div style="margin-top: 20px; text-align: right;">
+                <button class="btn btn-secondary" onclick="closeModal()">キャンセル</button>
+                <button class="btn btn-danger" id="modalConfirmBtn">確認</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // グローバル変数
+        let currentSection = 'overview';
+        let sites = [];
+        let metrics = {};
+        
+        // API設定
+        const API_BASE = '';
+        
+        // ユーティリティ関数
+        function formatDate(dateString) {
+            if (!dateString) return '未実行';
+            const date = new Date(dateString);
+            return date.toLocaleString('ja-JP');
+        }
+        
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            
+            if (days > 0) {
+                return `${days}日${hours}時間`;
+            } else if (hours > 0) {
+                return `${hours}時間${minutes}分`;
+            } else {
+                return `${minutes}分`;
+            }
+        }
+        
+        // アラート表示
+        function showAlert(message, type = 'info') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.innerHTML = `
+                <span>${type === 'success' ? '✓' : type === 'error' ? '✗' : 'ℹ'}</span>
+                <span>${message}</span>
+            `;
+            alertContainer.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+        
+        // セクション切り替え
+        function showSection(section) {
+            // すべてのセクションを非表示
+            document.querySelectorAll('.content-section').forEach(s => {
+                s.style.display = 'none';
+            });
+            
+            // ナビゲーションのアクティブ状態を更新
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // 選択されたセクションを表示
+            document.getElementById(`${section}-section`).style.display = 'block';
+            event.target.closest('.nav-item').classList.add('active');
+            
+            currentSection = section;
+            
+            // セクションに応じてデータを読み込み
+            switch(section) {
+                case 'overview':
+                    loadDashboard();
+                    break;
+                case 'sites':
+                    loadSites();
+                    break;
+                case 'metrics':
+                    loadMetrics();
+                    break;
+            }
+        }
+        
+        // API呼び出し
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                };
+                
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE}${endpoint}`, options);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                showAlert('API通信エラーが発生しました', 'error');
+                throw error;
+            }
+        }
+        
+        // ダッシュボード読み込み
+        async function loadDashboard() {
+            try {
+                // ヘルスチェック
+                const health = await apiCall('/api/health');
+                document.getElementById('systemStatus').textContent = health.monitoring_active ? '稼働中' : '停止中';
+                document.getElementById('totalSitesCard').textContent = health.sites_count;
+                document.getElementById('uptime').textContent = formatUptime(health.uptime_seconds);
+                
+                // メトリクス
+                const metricsData = await apiCall('/api/metrics');
+                metrics = metricsData.metrics;
+                document.getElementById('totalChecks').textContent = metrics.total_checks || 0;
+                
+                // サイト一覧
+                const sitesData = await apiCall('/api/sites');
+                sites = sitesData.sites;
+                
+                // 最近の活動を表示
+                displayRecentActivity();
+                
+            } catch (error) {
+                console.error('Dashboard load error:', error);
+            }
+        }
+        
+        // 最近の活動表示
+        function displayRecentActivity() {
+            const activityContainer = document.getElementById('recentActivity');
+            
+            if (sites.length === 0) {
+                activityContainer.innerHTML = '<p style="text-align: center; color: #7f8c8d;">まだ監視サイトがありません</p>';
+                return;
+            }
+            
+            // 最終チェック時刻でソート
+            const recentSites = sites
+                .filter(site => site.last_check)
+                .sort((a, b) => new Date(b.last_check) - new Date(a.last_check))
+                .slice(0, 5);
+            
+            activityContainer.innerHTML = recentSites.map(site => `
+                <div class="metric-row">
+                    <div>
+                        <strong>${site.name || site.url}</strong><br>
+                        <small style="color: #7f8c8d;">${site.url}</small>
+                    </div>
+                    <div style="text-align: right;">
+                        <small>${formatDate(site.last_check)}</small><br>
+                        ${site.last_notified ? '<span style="color: #27ae60;">通知済み</span>' : '<span style="color: #95a5a6;">変更なし</span>'}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // サイト一覧読み込み
+        async function loadSites() {
+            const sitesList = document.getElementById('sitesList');
+            sitesList.innerHTML = '<div class="spinner"></div>';
+            
+            try {
+                const data = await apiCall('/api/sites');
+                sites = data.sites;
+                
+                if (sites.length === 0) {
+                    sitesList.innerHTML = '<p style="text-align: center; color: #7f8c8d;">監視サイトが登録されていません</p>';
+                    return;
+                }
+                
+                sitesList.innerHTML = sites.map((site, index) => `
+                    <div class="site-card">
+                        <div class="site-info">
+                            <h3>${site.name || 'サイト ' + (index + 1)}</h3>
+                            <a href="${site.url}" target="_blank" class="site-url">${site.url}</a>
+                            <div class="site-meta">
+                                <div class="meta-item">
+                                    <span>📧</span>
+                                    <span>${site.email}</span>
+                                </div>
+                                <div class="meta-item">
+                                    <span>⏰</span>
+                                    <span>${formatDate(site.last_check)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="site-actions">
+                            <button class="btn btn-success" onclick="checkSite(${index})">チェック</button>
+                            <button class="btn btn-danger" onclick="confirmDelete(${index})">削除</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                sitesList.innerHTML = '<p style="text-align: center; color: #e74c3c;">読み込みエラー</p>';
+            }
+        }
+        
+        // メトリクス読み込み
+        async function loadMetrics() {
+            const metricsContent = document.getElementById('metricsContent');
+            metricsContent.innerHTML = '<div class="spinner"></div>';
+            
+            try {
+                const data = await apiCall('/api/metrics');
+                const m = data.metrics;
+                
+                metricsContent.innerHTML = `
+                    <div class="metric-row">
+                        <span class="metric-label">総チェック回数</span>
+                        <span class="metric-value">${m.total_checks || 0}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">失敗チェック数</span>
+                        <span class="metric-value">${m.failed_checks || 0}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">送信メール数</span>
+                        <span class="metric-value">${m.email_sent || 0}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">失敗メール数</span>
+                        <span class="metric-value">${m.email_failed || 0}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">最終チェック時刻</span>
+                        <span class="metric-value">${formatDate(m.last_check_time)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">稼働時間</span>
+                        <span class="metric-value">${data.uptime}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">サーキットブレーカー発動回数</span>
+                        <span class="metric-value">${m.circuit_breaker_active || 0}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">キャッシュサイズ</span>
+                        <span class="metric-value">${data.cache_size || 0}</span>
+                    </div>
+                `;
+            } catch (error) {
+                metricsContent.innerHTML = '<p style="text-align: center; color: #e74c3c;">読み込みエラー</p>';
+            }
+        }
+        
+        // サイト追加
+        document.getElementById('addSiteForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                name: document.getElementById('siteName').value,
+                url: document.getElementById('siteUrl').value,
+                email: document.getElementById('notifyEmail').value
+            };
+            
+            try {
+                await apiCall('/api/sites', 'POST', data);
+                showAlert('サイトを追加しました', 'success');
+                document.getElementById('addSiteForm').reset();
+                setTimeout(() => showSection('sites'), 1500);
+            } catch (error) {
+                showAlert('サイトの追加に失敗しました', 'error');
+            }
+        });
+        
+        // 全サイトチェック
+        async function checkAllSites() {
+            try {
+                showAlert('全サイトのチェックを開始しました', 'info');
+                await apiCall('/api/check-now', 'POST');
+                showAlert('チェックが完了しました', 'success');
+                setTimeout(() => loadSites(), 2000);
+            } catch (error) {
+                showAlert('チェックに失敗しました', 'error');
+            }
+        }
+        
+        // 単一サイトチェック（実装は全サイトチェックを使用）
+        async function checkSite(index) {
+            await checkAllSites();
+        }
+        
+        // サイト削除確認
+        function confirmDelete(index) {
+            const modal = document.getElementById('confirmModal');
+            const site = sites[index];
+            
+            document.getElementById('modalTitle').textContent = 'サイト削除の確認';
+            document.getElementById('modalMessage').textContent = 
+                `「${site.name || site.url}」を削除してもよろしいですか？`;
+            
+            document.getElementById('modalConfirmBtn').onclick = async () => {
+                try {
+                    await apiCall(`/api/sites/${index}`, 'DELETE');
+                    showAlert('サイトを削除しました', 'success');
+                    closeModal();
+                    loadSites();
+                } catch (error) {
+                    showAlert('削除に失敗しました', 'error');
+                }
+            };
+            
+            modal.style.display = 'block';
+        }
+        
+        // モーダル制御
+        function closeModal() {
+            document.getElementById('confirmModal').style.display = 'none';
+        }
+        
+        // テストメール送信
+        async function testEmailConfig() {
+            const email = document.getElementById('notifyEmail').value;
+            if (!email) {
+                showAlert('メールアドレスを入力してください', 'error');
+                return;
+            }
+            
+            try {
+                await apiCall('/api/test-email', 'POST', { email });
+                showAlert('テストメールを送信しました', 'success');
+            } catch (error) {
+                showAlert('テストメール送信に失敗しました', 'error');
+            }
+        }
+        
+        // データ更新
+        function refreshData() {
+            switch(currentSection) {
+                case 'overview':
+                    loadDashboard();
+                    break;
+                case 'sites':
+                    loadSites();
+                    break;
+                case 'metrics':
+                    loadMetrics();
+                    break;
+            }
+            showAlert('データを更新しました', 'success');
+        }
+        
+        // モーダルのクローズボタン
+        document.querySelector('.close').onclick = closeModal;
+        
+        // モーダル外クリックで閉じる
+        window.onclick = (event) => {
+            const modal = document.getElementById('confirmModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        };
+        
+        // 初期化
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDashboard();
+            
+            // 定期更新（30秒ごと）
+            setInterval(() => {
+                if (currentSection === 'overview') {
+                    loadDashboard();
+                }
+            }, 30000);
+        });
+    </script>
+</body>
+</html>
