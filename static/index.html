@@ -204,7 +204,6 @@
         <div class="header">
             <h1>🔍 Website Watcher</h1>
             <p>確実なメール通知でサイト更新をキャッチ</p>
-            <button class="btn btn-danger" onclick="logout()" style="float: right; margin-top: -50px;">🚪 ログアウト</button>
         </div>
 
         <!-- 統計表示 -->
@@ -383,13 +382,6 @@
                 showMessage('✅ テストメールを送信しました', 'success');
             } catch (error) {
                 showMessage('❌ テストメール送信に失敗しました', 'error');
-            }
-        }
-
-        // ログアウト関数
-        function logout() {
-            if (confirm('ログアウトしますか？')) {
-                window.location.href = '/logout';
             }
         }
 

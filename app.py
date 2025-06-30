@@ -13,6 +13,7 @@ from logging.handlers import RotatingFileHandler
 import httpx
 import aiosmtplib
 from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -444,50 +445,10 @@ async def task_monitor():
         except Exception as e:
             logger.error(f"タスク監視エラー: {e}")
 
-# 静的ファイル配信（認証が必要なもの以外）
+# 静的ファイル配信
 app_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(app_dir, "static")
-
-# 保護されたstaticファイル用のルート
-@app.get("/static/index.html")
-async def protected_index(request: Request):
-    """保護されたindex.html"""
-    try:
-        verify_session(request)
-        return FileResponse(os.path.join(static_dir, "index.html"))
-    except HTTPException:
-        return RedirectResponse(url="/login", status_code=303)
-
-@app.get("/static/monitor.html")
-async def protected_monitor(request: Request):
-    """保護されたmonitor.html"""
-    try:
-        verify_session(request)
-        return FileResponse(os.path.join(static_dir, "monitor.html"))
-    except HTTPException:
-        return RedirectResponse(url="/login", status_code=303)
-
-# ファビコンとログインページのみ認証なしでアクセス可能
-@app.get("/static/favicon.png")
-async def favicon_png():
-    return FileResponse(os.path.join(static_dir, "favicon.png"))
-
-@app.get("/static/favicon.ico")
-async def favicon_ico():
-    return FileResponse(os.path.join(static_dir, "favicon.ico"))
-
-@app.get("/static/login.html")
-async def login_static():
-    return FileResponse(os.path.join(static_dir, "login.html"))
-
-@app.get("/monitor")
-async def monitor_page(request: Request):
-    """監視ダッシュボードページ"""
-    try:
-        verify_session(request)
-        return FileResponse(os.path.join(static_dir, "monitor.html"))
-    except HTTPException:
-        return RedirectResponse(url="/login", status_code=303)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # FastAPI エンドポイント
 @app.on_event("startup")
@@ -574,19 +535,14 @@ async def logout(request: Request):
     return response
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
-    """メインページ（認証必須）"""
-    try:
-        verify_session(request)
-        return FileResponse(os.path.join(static_dir, "index.html"))
-    except HTTPException:
-        return RedirectResponse(url="/login", status_code=303)
+async def root():
+    """メインページ"""
+    return FileResponse(os.path.join(static_dir, "index.html"))
 
 @app.get("/api/health")
 @limiter.limit("60/minute")
 async def health_check(request: Request):
     """ヘルスチェック"""
-    verify_session(request)
     uptime = datetime.now() - metrics['uptime_start']
     
     return {
@@ -602,7 +558,6 @@ async def health_check(request: Request):
 @limiter.limit("30/minute")
 async def get_metrics(request: Request):
     """メトリクス取得"""
-    verify_session(request)
     return {
         "metrics": metrics,
         "uptime": str(datetime.now() - metrics['uptime_start']),
@@ -613,7 +568,6 @@ async def get_metrics(request: Request):
 @limiter.limit("120/minute")
 async def get_sites(request: Request):
     """サイト一覧取得（キャッシュ付き）"""
-    verify_session(request)
     sites = load_sites()
     return {"sites": sites}
 
@@ -621,7 +575,6 @@ async def get_sites(request: Request):
 @limiter.limit("10/minute")
 async def add_site(site: Site, request: Request):
     """サイト追加"""
-    verify_session(request)
     sites = load_sites()
     
     # 重複チェック
@@ -652,7 +605,6 @@ async def add_site(site: Site, request: Request):
 @limiter.limit("10/minute")
 async def delete_site(site_index: int, request: Request):
     """サイト削除"""
-    verify_session(request)
     sites = load_sites()
     
     if 0 <= site_index < len(sites):
@@ -667,7 +619,6 @@ async def delete_site(site_index: int, request: Request):
 @limiter.limit("5/minute")
 async def test_email(email_data: dict, request: Request):
     """テストメール送信"""
-    verify_session(request)
     to_email = email_data.get("email")
     if not to_email:
         raise HTTPException(status_code=400, detail="メールアドレスが必要です")
@@ -691,7 +642,6 @@ async def test_email(email_data: dict, request: Request):
 @limiter.limit("3/minute")
 async def check_now(request: Request):
     """手動チェック実行"""
-    verify_session(request)
     logger.info("🔍 手動チェック実行")
     await check_all_sites()
     return {"message": "チェックを実行しました"}
