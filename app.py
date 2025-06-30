@@ -264,7 +264,9 @@ def create_session_token():
 def verify_session(request: Request):
     """セッション確認"""
     session_token = request.cookies.get("session_token")
+    logger.info(f"セッション確認: token={session_token}, active_sessions={len(active_sessions)}")
     if not session_token or session_token not in active_sessions:
+        logger.warning("認証失敗: 無効なセッショントークン")
         raise HTTPException(status_code=401, detail="認証が必要です")
 
 def get_cached_data(key: str, ttl_seconds: int = 30):
@@ -456,10 +458,50 @@ async def task_monitor():
         except Exception as e:
             logger.error(f"タスク監視エラー: {e}")
 
-# 静的ファイル配信
+# 静的ファイル配信（認証が必要なもの以外）
 app_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(app_dir, "static")
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# 保護されたstaticファイル用のルート
+@app.get("/static/index.html")
+async def protected_index(request: Request):
+    """保護されたindex.html"""
+    try:
+        verify_session(request)
+        return FileResponse(os.path.join(static_dir, "index.html"))
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+
+@app.get("/static/monitor.html")
+async def protected_monitor(request: Request):
+    """保護されたmonitor.html"""
+    try:
+        verify_session(request)
+        return FileResponse(os.path.join(static_dir, "monitor.html"))
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
+
+# ファビコンとログインページのみ認証なしでアクセス可能
+@app.get("/static/favicon.png")
+async def favicon_png():
+    return FileResponse(os.path.join(static_dir, "favicon.png"))
+
+@app.get("/static/favicon.ico")
+async def favicon_ico():
+    return FileResponse(os.path.join(static_dir, "favicon.ico"))
+
+@app.get("/static/login.html")
+async def login_static():
+    return FileResponse(os.path.join(static_dir, "login.html"))
+
+@app.get("/monitor")
+async def monitor_page(request: Request):
+    """監視ダッシュボードページ"""
+    try:
+        verify_session(request)
+        return FileResponse(os.path.join(static_dir, "monitor.html"))
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
 
 # FastAPI エンドポイント
 @app.on_event("startup")
@@ -558,6 +600,7 @@ async def root(request: Request):
 @limiter.limit("60/minute")
 async def health_check(request: Request):
     """ヘルスチェック"""
+    verify_session(request)
     uptime = datetime.now() - metrics['uptime_start']
     
     return {
@@ -573,6 +616,7 @@ async def health_check(request: Request):
 @limiter.limit("30/minute")
 async def get_metrics(request: Request):
     """メトリクス取得"""
+    verify_session(request)
     return {
         "metrics": metrics,
         "uptime": str(datetime.now() - metrics['uptime_start']),
