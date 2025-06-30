@@ -12,9 +12,9 @@ from typing import List, Dict, Optional, Set
 from logging.handlers import RotatingFileHandler
 import httpx
 import aiosmtplib
-from fastapi import FastAPI, HTTPException, Request, Form
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -55,11 +55,6 @@ app = FastAPI(title="Website Watcher", description="高信頼性サイト更新�
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# セキュリティ設定
-ADMIN_PASSWORD = "1033"
-
-# セッション管理（簡易版）
-active_sessions = set()
 
 # CORS設定
 app.add_middleware(
@@ -241,20 +236,6 @@ class AsyncSiteChecker:
 email_service = AsyncEmailService()
 site_checker = None  # 後で初期化
 
-# 認証関数
-
-def create_session_token():
-    """セッショントークン生成"""
-    import secrets
-    token = secrets.token_urlsafe(32)
-    active_sessions.add(token)
-    return token
-
-def verify_session(request: Request):
-    """セッション確認"""
-    session_token = request.cookies.get("session_token")
-    if not session_token or session_token not in active_sessions:
-        raise HTTPException(status_code=401, detail="認証が必要です")
 
 def get_cached_data(key: str, ttl_seconds: int = 30):
     """キャッシュデータ取得"""
@@ -498,41 +479,6 @@ async def shutdown_event():
     
     logger.info("👋 Website Watcher 終了")
 
-@app.get("/login", response_class=HTMLResponse)
-async def login_page():
-    """ログインページ"""
-    return FileResponse(os.path.join(static_dir, "login.html"))
-
-@app.post("/login")
-async def login(request: Request, password: str = Form(...)):
-    """ログイン処理"""
-    if password != ADMIN_PASSWORD:
-        return RedirectResponse(url="/login?error=1", status_code=303)
-    
-    # セッショントークン生成
-    session_token = create_session_token()
-    
-    # メインページにリダイレクト
-    response = RedirectResponse(url="/", status_code=303)
-    response.set_cookie(
-        key="session_token", 
-        value=session_token, 
-        httponly=True, 
-        secure=False,  # 開発用はFalse
-        samesite="lax"
-    )
-    return response
-
-@app.get("/logout")
-async def logout(request: Request):
-    """ログアウト"""
-    session_token = request.cookies.get("session_token")
-    if session_token and session_token in active_sessions:
-        active_sessions.remove(session_token)
-    
-    response = RedirectResponse(url="/login", status_code=303)
-    response.delete_cookie("session_token")
-    return response
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
