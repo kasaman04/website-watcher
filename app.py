@@ -12,10 +12,11 @@ from typing import List, Dict, Optional, Set
 from logging.handlers import RotatingFileHandler
 import httpx
 import aiosmtplib
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -54,6 +55,13 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Website Watcher", description="高信頼性サイト更新監視システム")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# セキュリティ設定
+security = HTTPBasic()
+ADMIN_PASSWORD = "1033"
+
+# セッション管理（簡易版）
+active_sessions = set()
 
 # CORS設定
 app.add_middleware(
@@ -234,6 +242,30 @@ class AsyncSiteChecker:
 # サービスインスタンス
 email_service = AsyncEmailService()
 site_checker = None  # 後で初期化
+
+# 認証関数
+def verify_password(credentials: HTTPBasicCredentials = Depends(security)):
+    """パスワード認証"""
+    if credentials.password != ADMIN_PASSWORD:
+        raise HTTPException(
+            status_code=401,
+            detail="パスワードが間違っています",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+def create_session_token():
+    """セッショントークン生成"""
+    import secrets
+    token = secrets.token_urlsafe(32)
+    active_sessions.add(token)
+    return token
+
+def verify_session(request: Request):
+    """セッション確認"""
+    session_token = request.cookies.get("session_token")
+    if not session_token or session_token not in active_sessions:
+        raise HTTPException(status_code=401, detail="認証が必要です")
 
 def get_cached_data(key: str, ttl_seconds: int = 30):
     """キャッシュデータ取得"""
@@ -477,10 +509,50 @@ async def shutdown_event():
     
     logger.info("👋 Website Watcher 終了")
 
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """ログインページ"""
+    return FileResponse(os.path.join(static_dir, "login.html"))
+
+@app.post("/login")
+async def login(request: Request, password: str = Form(...)):
+    """ログイン処理"""
+    if password != ADMIN_PASSWORD:
+        return RedirectResponse(url="/login?error=1", status_code=303)
+    
+    # セッショントークン生成
+    session_token = create_session_token()
+    
+    # メインページにリダイレクト
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(
+        key="session_token", 
+        value=session_token, 
+        httponly=True, 
+        secure=False,  # 開発用はFalse
+        samesite="lax"
+    )
+    return response
+
+@app.get("/logout")
+async def logout(request: Request):
+    """ログアウト"""
+    session_token = request.cookies.get("session_token")
+    if session_token and session_token in active_sessions:
+        active_sessions.remove(session_token)
+    
+    response = RedirectResponse(url="/login", status_code=303)
+    response.delete_cookie("session_token")
+    return response
+
 @app.get("/", response_class=HTMLResponse)
-async def root():
-    """メインページ"""
-    return FileResponse(os.path.join(static_dir, "index.html"))
+async def root(request: Request):
+    """メインページ（認証必須）"""
+    try:
+        verify_session(request)
+        return FileResponse(os.path.join(static_dir, "index.html"))
+    except HTTPException:
+        return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/api/health")
 @limiter.limit("60/minute")
@@ -511,6 +583,7 @@ async def get_metrics(request: Request):
 @limiter.limit("120/minute")
 async def get_sites(request: Request):
     """サイト一覧取得（キャッシュ付き）"""
+    verify_session(request)
     sites = load_sites()
     return {"sites": sites}
 
@@ -518,6 +591,7 @@ async def get_sites(request: Request):
 @limiter.limit("10/minute")
 async def add_site(site: Site, request: Request):
     """サイト追加"""
+    verify_session(request)
     sites = load_sites()
     
     # 重複チェック
@@ -548,6 +622,7 @@ async def add_site(site: Site, request: Request):
 @limiter.limit("10/minute")
 async def delete_site(site_index: int, request: Request):
     """サイト削除"""
+    verify_session(request)
     sites = load_sites()
     
     if 0 <= site_index < len(sites):
@@ -562,6 +637,7 @@ async def delete_site(site_index: int, request: Request):
 @limiter.limit("5/minute")
 async def test_email(email_data: dict, request: Request):
     """テストメール送信"""
+    verify_session(request)
     to_email = email_data.get("email")
     if not to_email:
         raise HTTPException(status_code=400, detail="メールアドレスが必要です")
@@ -585,6 +661,7 @@ async def test_email(email_data: dict, request: Request):
 @limiter.limit("3/minute")
 async def check_now(request: Request):
     """手動チェック実行"""
+    verify_session(request)
     logger.info("🔍 手動チェック実行")
     await check_all_sites()
     return {"message": "チェックを実行しました"}

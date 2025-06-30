@@ -475,6 +475,9 @@
                 <a class="nav-item" onclick="showSection('settings')">
                     <span>⚙️ 設定</span>
                 </a>
+                <a class="nav-item" onclick="logout()" style="margin-top: 20px; background: #e74c3c;">
+                    <span>🚪 ログアウト</span>
+                </a>
             </nav>
         </aside>
         
@@ -999,6 +1002,13 @@
                     break;
             }
             showAlert('データを更新しました', 'success');
+        }
+        
+        // ログアウト関数
+        function logout() {
+            if (confirm('ログアウトしますか？')) {
+                window.location.href = '/logout';
+            }
         }
         
         // モーダルのクローズボタン
