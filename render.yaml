@@ -9,6 +9,10 @@ services:
         value: 8888
       - key: CHECK_INTERVAL
         value: 300
+      - key: AUTH_PASSWORD
+        value: 1033
+      - key: ENVIRONMENT
+        value: production
     disk:
       name: website-watcher-disk
       mountPath: /opt/render/project/data

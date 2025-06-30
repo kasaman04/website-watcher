@@ -249,25 +249,36 @@ def get_client_ip(request: Request) -> str:
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         ip = forwarded.split(",")[0].strip()
-        logger.info(f"🌐 Client IP (X-Forwarded-For): {ip}")
+        # 本番環境では詳細ログを抑制
+        if os.getenv("ENVIRONMENT") != "production":
+            logger.info(f"🌐 Client IP (X-Forwarded-For): {ip}")
         return ip
     
     # CF-Connecting-IP (Cloudflare)
     cf_ip = request.headers.get("CF-Connecting-IP")
     if cf_ip:
-        logger.info(f"🌐 Client IP (CF): {cf_ip}")
+        if os.getenv("ENVIRONMENT") != "production":
+            logger.info(f"🌐 Client IP (CF): {cf_ip}")
         return cf_ip
     
     # 直接接続
     direct_ip = request.client.host if request.client else "unknown"
-    logger.info(f"🌐 Client IP (direct): {direct_ip}")
+    if os.getenv("ENVIRONMENT") != "production":
+        logger.info(f"🌐 Client IP (direct): {direct_ip}")
     return direct_ip
 
 def is_authenticated(request: Request) -> bool:
     """認証チェック"""
     client_ip = get_client_ip(request)
     is_logged_in = client_ip in logged_in_ips
-    logger.info(f"🔐 認証チェック - IP: {client_ip}, ログイン状態: {is_logged_in}, セッション数: {len(logged_in_ips)}")
+    
+    # 本番環境では簡略ログ、開発環境では詳細ログ
+    if os.getenv("ENVIRONMENT") == "production":
+        if not is_logged_in:
+            logger.info(f"🔒 未認証アクセス - IP: {client_ip}")
+    else:
+        logger.info(f"🔐 認証チェック - IP: {client_ip}, ログイン状態: {is_logged_in}, セッション数: {len(logged_in_ips)}")
+    
     return is_logged_in
 
 def require_auth(request: Request):
@@ -521,8 +532,12 @@ async def startup_event():
         logger.warning("⚠️ メール設定に問題があります")
     
     # 認証情報確認
-    logger.info(f"🔑 認証設定: パスワード={'*' * len(AUTH_PASSWORD)}")
-    logger.info(f"📊 現在のセッション数: {len(logged_in_ips)}")
+    # 認証情報のログ出力（本番では簡略化）
+    if os.getenv("ENVIRONMENT") == "production":
+        logger.info("🔑 認証システム: 有効")
+    else:
+        logger.info(f"🔑 認証設定: パスワード={'*' * len(AUTH_PASSWORD)}")
+        logger.info(f"📊 現在のセッション数: {len(logged_in_ips)}")
     
     # 監視タスク開始
     monitoring_task = asyncio.create_task(monitoring_loop())
@@ -563,14 +578,19 @@ async def login_page():
 async def login(request: Request, password: str = Form(...)):
     """ログイン処理"""
     client_ip = get_client_ip(request)
-    logger.info(f"🔑 ログイン試行 - IP: {client_ip}, パスワード: {'*' * len(password)}")
+    
+    # 本番環境ではパスワード文字数を非表示
+    if os.getenv("ENVIRONMENT") == "production":
+        logger.info(f"🔑 ログイン試行 - IP: {client_ip}")
+    else:
+        logger.info(f"🔑 ログイン試行 - IP: {client_ip}, パスワード: {'*' * len(password)}")
     
     if password == AUTH_PASSWORD:
         logged_in_ips.add(client_ip)
-        logger.info(f"✅ ログイン成功 - IP: {client_ip}, セッション数: {len(logged_in_ips)}")
+        logger.info(f"✅ ログイン成功 - IP: {client_ip}")
         return RedirectResponse(url="/", status_code=303)
     else:
-        logger.warning(f"❌ ログイン失敗 - IP: {client_ip}, 無効なパスワード")
+        logger.warning(f"❌ ログイン失敗 - IP: {client_ip}")
         return RedirectResponse(url="/login?error=1", status_code=303)
 
 @app.get("/logout")
@@ -579,17 +599,26 @@ async def logout(request: Request):
     client_ip = get_client_ip(request)
     was_logged_in = client_ip in logged_in_ips
     logged_in_ips.discard(client_ip)
-    logger.info(f"😪 ログアウト - IP: {client_ip}, ログイン状態: {was_logged_in}, セッション数: {len(logged_in_ips)}")
+    
+    if os.getenv("ENVIRONMENT") == "production":
+        logger.info(f"😪 ログアウト - IP: {client_ip}")
+    else:
+        logger.info(f"😪 ログアウト - IP: {client_ip}, ログイン状態: {was_logged_in}, セッション数: {len(logged_in_ips)}")
+    
     return RedirectResponse(url="/login", status_code=303)
 
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     """メインページ（認証必須）"""
     client_ip = get_client_ip(request)
-    logger.info(f"🏠 メインページ要求 - IP: {client_ip}")
+    
+    # 本番環境では簡略ログ
+    if os.getenv("ENVIRONMENT") != "production":
+        logger.info(f"🏠 メインページ要求 - IP: {client_ip}")
     
     if not is_authenticated(request):
-        logger.info(f"🔒 未認証アクセス - ログインページにリダイレクト")
+        if os.getenv("ENVIRONMENT") != "production":
+            logger.info(f"🔒 未認証アクセス - ログインページにリダイレクト")
         return RedirectResponse(url="/login", status_code=303)
     
     index_file = os.path.join(static_dir, "index.html")
@@ -614,10 +643,21 @@ async def favicon():
 # デバッグ用エンドポイント
 @app.get("/debug/auth")
 async def debug_auth(request: Request):
-    """認証状態デバッグ情報"""
+    """認証状態デバッグ情報（本番環境では制限あり）"""
     client_ip = get_client_ip(request)
     is_auth = is_authenticated(request)
     
+    # 本番環境では機密情報を非表示
+    if os.getenv("ENVIRONMENT") == "production":
+        return {
+            "client_ip": client_ip,
+            "is_authenticated": is_auth,
+            "session_count": len(logged_in_ips),
+            "auth_status": "enabled",
+            "environment": "production"
+        }
+    
+    # 開発環境では詳細情報を表示
     return {
         "client_ip": client_ip,
         "is_authenticated": is_auth,
@@ -744,6 +784,7 @@ async def emergency_login(request: Request):
     """緊急ログイン（デバッグ用）"""
     # 本番環境では無効
     if os.getenv("ENVIRONMENT") == "production":
+        logger.warning(f"⚠️ 本番環境で緊急ログインの試行を検知 - IP: {get_client_ip(request)}")
         raise HTTPException(status_code=404, detail="Not found")
     
     client_ip = get_client_ip(request)
